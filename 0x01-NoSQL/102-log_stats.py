@@ -1,45 +1,54 @@
 #!/usr/bin/env python3
-""" Log stats - new version """
+"""
+Module that provides statistics about Nginx logs stored in MongoDB
+
+This module connects to a MongoDB database and retrieves statistics
+about the Nginx logs stored in the 'nginx' collection.
+It counts the number of documents in the collection and the number
+of logs with each HTTP method (GET, POST, PUT, PATCH, DELETE)
+It also counts the number of logs with the method GET and the
+path '/status'.
+Additionally, it calculates the number of logs for each unique IP
+address and displays the top 10 IPs with the highest log count.
+"""
 from pymongo import MongoClient
 
 
-def nginx_stats_check():
-    """ provides some stats about Nginx logs stored in MongoDB:"""
-    client = MongoClient()
-    collection = client.logs.nginx
-
-    num_of_docs = collection.count_documents({})
-    print("{} logs".format(num_of_docs))
-    print("Methods:")
-    methods_list = ["GET", "POST", "PUT", "PATCH", "DELETE"]
-    for method in methods_list:
-        method_count = collection.count_documents({"method": method})
-        print("\tmethod {}: {}".format(method, method_count))
-    status = collection.count_documents({"method": "GET", "path": "/status"})
-    print("{} status check".format(status))
-
-    print("IPs:")
-
-    top_IPs = collection.aggregate([
-        {"$group":
-         {
-             "_id": "$ip",
-             "count": {"$sum": 1}
-         }
-         },
-        {"$sort": {"count": -1}},
-        {"$limit": 10},
-        {"$project": {
-            "_id": 0,
-            "ip": "$_id",
-            "count": 1
-        }}
-    ])
-    for top_ip in top_IPs:
-        count = top_ip.get("count")
-        ip_address = top_ip.get("ip")
-        print("\t{}: {}".format(ip_address, count))
-
-
 if __name__ == "__main__":
-    nginx_stats_check()
+    client = MongoClient('mongodb://127.0.0.1:27017')
+    nginx_logs = client.logs.nginx
+    # get number of documents in collection
+    docs_num = nginx_logs.count_documents({})
+    get_num = nginx_logs.count_documents({'method': 'GET'})
+    post_num = nginx_logs.count_documents({'method': 'POST'})
+    put_num = nginx_logs.count_documents({'method': 'PUT'})
+    patch_num = nginx_logs.count_documents({'method': 'PATCH'})
+    delete_num = nginx_logs.count_documents({'method': 'DELETE'})
+    get_status = nginx_logs.count_documents({'method': 'GET',
+                                             'path': '/status'})
+    IPs_count = nginx_logs.aggregate([
+        {
+            '$group': {
+                '_id': "$ip",
+                'count': {'$sum': 1}
+            }
+        },
+        {
+            "$sort": {"count": -1}
+        }
+    ])
+    print("{} logs".format(docs_num))
+    print("Methods:")
+    print("\tmethod GET: {}".format(get_num))
+    print("\tmethod POST: {}".format(post_num))
+    print("\tmethod PUT: {}".format(put_num))
+    print("\tmethod PATCH: {}".format(patch_num))
+    print("\tmethod DELETE: {}".format(delete_num))
+    print("{} status check".format(get_status))
+    print("IPs:")
+    x = 0
+    for i in IPs_count:
+        print("\t{}: {}".format(i.get('_id'), i.get('count')))
+        x += 1
+        if x > 9:
+            break
